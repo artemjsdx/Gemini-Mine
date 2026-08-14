@@ -1,6 +1,7 @@
 package com.artemjsdx.geminimine.forensics;
 
 import android.app.Activity;
+import android.app.ApplicationExitInfo;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -9,7 +10,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -23,10 +23,11 @@ import java.nio.charset.StandardCharsets;
 
 public class ForensicLauncherActivity extends Activity {
     private static final String TAG = "ForensicLauncher";
+    private static final int MAX_POLL_ITERATIONS = 32; // 32 * 250ms = 8.0s
+    private static final long POLL_INTERVAL_MS = 250L;
 
     private final LoopbackReportServer mServer = new LoopbackReportServer();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-
     private boolean mGameLaunched = false;
     private boolean mEvidenceCaptured = false;
     private long mLaunchWallTimeMs = 0;
@@ -41,14 +42,13 @@ public class ForensicLauncherActivity extends Activity {
         super.onCreate(savedInstanceState);
         ProbeLogger.log("FORENSICS_LAUNCHER_ONCREATE", "PID=" + android.os.Process.myPid());
 
-        // Simple stable View layout without XML dependencies
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
         root.setPadding(32, 48, 32, 32);
 
         mTitleText = new TextView(this);
-        mTitleText.setText("Gemini Mine — Forensic Probe (R3A2)");
+        mTitleText.setText("Gemini Mine — Forensic Probe (R3A2-R1)");
         mTitleText.setTextColor(Color.WHITE);
         mTitleText.setTextSize(18f);
         mTitleText.setTypeface(Typeface.DEFAULT_BOLD);
@@ -75,7 +75,6 @@ public class ForensicLauncherActivity extends Activity {
         root.addView(scroll);
         setContentView(root);
 
-        // Start server
         File gameLog = ProbeLogger.getLogFile(this, "game-current.log");
         mServer.start(System.currentTimeMillis(), gameLog);
         int port = mServer.getBoundPort();
@@ -91,21 +90,19 @@ public class ForensicLauncherActivity extends Activity {
             mGameLaunched = true;
             mLaunchWallTimeMs = System.currentTimeMillis();
             mLaunchUptimeMs = SystemClock.uptimeMillis();
-
             ProbeLogger.log("FORENSICS_PROCESS_READY", "launching game process");
-            // Clear previous game log for fresh capture
-            ProbeLogger.clear(this, "game-current.log");
+
+            ProbeLogger.clearFile(this, "game-current.log");
+            ProbeLogger.clearFile(this, "forensics-report.txt");
 
             Intent gameIntent = new Intent(this, MainActivity.class);
-            gameIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             ProbeLogger.log("GAME_ACTIVITY_START_REQUESTED", "Intent dispatched");
             startActivity(gameIntent);
         } else {
-            // GameActivity returned or died
             ProbeLogger.log("GAME_ACTIVITY_RETURNED_OR_DIED", "Forensics process foregrounded");
             if (!mEvidenceCaptured) {
                 mEvidenceCaptured = true;
-                mStatusText.setText("Game exited. Querying ApplicationExitInfo and breadcrumbs...");
+                mStatusText.setText("Game exited. Polling ApplicationExitInfo and breadcrumbs...");
                 collectEvidenceAsync();
             }
         }
@@ -113,15 +110,28 @@ public class ForensicLauncherActivity extends Activity {
 
     private void collectEvidenceAsync() {
         new Thread(() -> {
-            // Brief polling for ExitInfo (Android publishes exit reasons asynchronously)
-            try {
-                Thread.sleep(1200);
-            } catch (InterruptedException ignored) {
+            boolean timedOut = true;
+            ApplicationExitInfo matchingInfo = null;
+
+            for (int i = 0; i < MAX_POLL_ITERATIONS; i++) {
+                try {
+                    Thread.sleep(POLL_INTERVAL_MS);
+                } catch (InterruptedException ignored) {
+                }
+                matchingInfo = ForensicReport.queryCurrentRunExitInfo(ForensicLauncherActivity.this, mLaunchWallTimeMs);
+                if (matchingInfo != null) {
+                    timedOut = false;
+                    ProbeLogger.log("EXIT_INFO_POLL_SUCCESS", "iteration=" + (i + 1) + " | PID=" + matchingInfo.getPid());
+                    break;
+                }
             }
 
-            final String report = ForensicReport.buildReport(ForensicLauncherActivity.this, mLaunchWallTimeMs, mLaunchUptimeMs);
+            if (timedOut) {
+                ProbeLogger.log("EXIT_INFO_POLL_TIMEOUT", "No current-run exit record found within 8.0s");
+            }
 
-            // Persist report to app-private storage
+            final String report = ForensicReport.buildReport(ForensicLauncherActivity.this, mLaunchWallTimeMs, mLaunchUptimeMs, timedOut);
+
             try {
                 File reportFile = ProbeLogger.getLogFile(ForensicLauncherActivity.this, "forensics-report.txt");
                 try (FileOutputStream fos = new FileOutputStream(reportFile)) {
@@ -132,7 +142,6 @@ public class ForensicLauncherActivity extends Activity {
                 Log.e(TAG, "Failed to persist report file: " + e.getMessage());
             }
 
-            // Update Loopback server
             String classification = "UNKNOWN";
             if (report.contains("CLASSIFICATION: ")) {
                 int idx = report.indexOf("CLASSIFICATION: ");
@@ -145,7 +154,6 @@ public class ForensicLauncherActivity extends Activity {
 
             final String finalClass = classification;
             final int port = mServer.getBoundPort();
-
             mHandler.post(() -> {
                 mStatusText.setText(String.format("EVIDENCE READY ON 127.0.0.1:%d/report\nClassification: %s\nDO NOT CLOSE THIS SCREEN.", port, finalClass));
                 mStatusText.setTextColor(Color.CYAN);

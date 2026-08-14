@@ -14,10 +14,10 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public final class ProbeLogger {
+public class ProbeLogger {
     private static final String TAG = "GeminiMineProbe";
-    private static File sLogFile;
     private static final Object sLock = new Object();
+    private static File sLogFile = null;
 
     public static void init(Context context, String fileName) {
         synchronized (sLock) {
@@ -29,7 +29,7 @@ public final class ProbeLogger {
         }
     }
 
-    public static void clear(Context context, String fileName) {
+    public static void clearFile(Context context, String fileName) {
         synchronized (sLock) {
             File dir = new File(context.getFilesDir(), "startup-probe");
             if (!dir.exists()) {
@@ -39,7 +39,6 @@ public final class ProbeLogger {
             if (f.exists()) {
                 f.delete();
             }
-            sLogFile = f;
         }
     }
 
@@ -48,10 +47,17 @@ public final class ProbeLogger {
         return new File(dir, fileName);
     }
 
+    public static File getActiveLogFile() {
+        synchronized (sLock) {
+            return sLogFile;
+        }
+    }
+
     public static void log(String stage, String details) {
         long uptimeMs = SystemClock.uptimeMillis();
         long wallMs = System.currentTimeMillis();
         String timeStr = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date(wallMs));
+
         String entry = String.format(Locale.US, "[%s | +%dms | PID:%d | TID:%d] %s%s\n",
                 timeStr, uptimeMs, android.os.Process.myPid(), android.os.Process.myTid(),
                 stage, (details != null && !details.isEmpty()) ? " : " + details : "");

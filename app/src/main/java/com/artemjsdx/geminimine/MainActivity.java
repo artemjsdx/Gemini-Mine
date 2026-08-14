@@ -1,10 +1,16 @@
 package com.artemjsdx.geminimine;
 
 import android.os.Bundle;
+
 import com.artemjsdx.geminimine.forensics.ProbeLogger;
 import com.google.androidgamesdk.GameActivity;
 
+import java.io.File;
+
 public class MainActivity extends GameActivity {
+
+    private static native void nativeSetStartupProbePath(String path);
+
     static {
         ProbeLogger.log("MAIN_ACTIVITY_CLASS_INIT_BEGIN", null);
         try {
@@ -20,6 +26,13 @@ public class MainActivity extends GameActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        try {
+            File probeFile = ProbeLogger.getLogFile(this, "game-current.log");
+            nativeSetStartupProbePath(probeFile.getAbsolutePath());
+        } catch (Throwable t) {
+            ProbeLogger.logThrowable("NATIVE_SET_STARTUP_PROBE_PATH_FAILED", t);
+        }
+
         ProbeLogger.log("MAIN_ACTIVITY_ONCREATE_BEFORE_SUPER", savedInstanceState != null ? "restoring" : "fresh");
         super.onCreate(savedInstanceState);
         ProbeLogger.log("MAIN_ACTIVITY_ONCREATE_AFTER_SUPER", null);

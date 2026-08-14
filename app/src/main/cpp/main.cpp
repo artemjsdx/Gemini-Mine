@@ -1,25 +1,29 @@
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <android/log.h>
+#include <jni.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <mutex>
+#include <string>
 
 #define LOG_TAG "GeminiMineNative"
 #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__))
 #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__))
 #define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__))
 
-static const char* LOG_PATH = "/data/data/com.artemjsdx.geminimine/files/startup-probe/game-current.log";
+static std::mutex g_probe_mutex;
+static std::string g_probe_log_path = "";
+static bool g_probe_path_ready = false;
 
 static void probe_native_log(const char* stage, const char* details) {
     struct timeval tv;
     gettimeofday(&tv, nullptr);
     struct tm tm_info;
     localtime_r(&tv.tv_sec, &tm_info);
-
     char time_buf[64];
     strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &tm_info);
 
@@ -31,21 +35,58 @@ static void probe_native_log(const char* stage, const char* details) {
                        stage,
                        (details && details[0]) ? " : " : "",
                        (details && details[0]) ? details : "");
-
     LOGI("%s", line_buf);
 
-    int fd = open(LOG_PATH, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd >= 0) {
-        write(fd, line_buf, len);
-        fsync(fd);
-        close(fd);
+    std::string path;
+    bool ready = false;
+    {
+        std::lock_guard<std::mutex> lock(g_probe_mutex);
+        path = g_probe_log_path;
+        ready = g_probe_path_ready;
+    }
+
+    if (ready && !path.empty()) {
+        int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd >= 0) {
+            write(fd, line_buf, len);
+            fsync(fd);
+            close(fd);
+        }
+    } else {
+        LOGW("Probe path not ready for stage %s, logged to logcat only", stage);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_artemjsdx_geminimine_MainActivity_nativeSetStartupProbePath(
+        JNIEnv* env,
+        jclass /* clazz */,
+        jstring jPath) {
+    if (jPath == nullptr) {
+        return;
+    }
+    const char* pathStr = env->GetStringUTFChars(jPath, nullptr);
+    if (pathStr != nullptr) {
+        {
+            std::lock_guard<std::mutex> lock(g_probe_mutex);
+            g_probe_log_path = pathStr;
+            g_probe_path_ready = !g_probe_log_path.empty();
+        }
+        env->ReleaseStringUTFChars(jPath, pathStr);
+    }
+    if (g_probe_path_ready) {
+        std::string current_path;
+        {
+            std::lock_guard<std::mutex> lock(g_probe_mutex);
+            current_path = g_probe_log_path;
+        }
+        probe_native_log("JNI_PROBE_PATH_SET", current_path.c_str());
     }
 }
 
 static void handle_cmd(struct android_app* app, int32_t cmd) {
     char cmd_detail[64];
     snprintf(cmd_detail, sizeof(cmd_detail), "cmd=%d", cmd);
-
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
             probe_native_log("APP_CMD_INIT_WINDOW", (app->window != nullptr) ? "window_non_null" : "window_null");
@@ -72,17 +113,13 @@ static void handle_cmd(struct android_app* app, int32_t cmd) {
 }
 
 void android_main(struct android_app* app) {
-    probe_native_log("JNI_PROBE_PATH_SET", LOG_PATH);
     probe_native_log("ANDROID_MAIN_ENTER", "native_app_glue");
-
     app->onAppCmd = handle_cmd;
-
     probe_native_log("ANDROID_MAIN_LOOP_BEGIN", "polling_alooper");
 
     while (!app->destroyRequested) {
         int events = 0;
         struct android_poll_source* source = nullptr;
-
         int ident = ALooper_pollOnce(-1, nullptr, &events, (void**)&source);
         if (ident >= 0) {
             if (source != nullptr) {
