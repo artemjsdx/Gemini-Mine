@@ -93,15 +93,15 @@ jobs:
           }
           echo "PASS: Launchable activity is com.artemjsdx.geminimine.MainActivity"
 
-          # SensorLandscape check
-          if ! echo "$BADGING_DUMP" | grep -q "sensorLandscape"; then
-            echo "Checking screenOrientation via apkanalyzer..."
-            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/apkanalyzer manifest print "$APK_PATH" | grep -q "sensorLandscape" || {
-              echo "ERROR: sensorLandscape not found in manifest"
-              exit 1
-            }
+          # SensorLandscape check (ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE = 6 or 0x6 in binary manifest)
+          MANIFEST_XML=$(${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/apkanalyzer manifest print "$APK_PATH")
+          echo "$MANIFEST_XML"
+          if echo "$MANIFEST_XML" | grep -q 'android:screenOrientation="6"\|android:screenOrientation="sensorLandscape"'; then
+            echo "PASS: sensorLandscape (screenOrientation=6) orientation confirmed in manifest"
+          else
+            echo "ERROR: sensorLandscape not found in manifest"
+            exit 1
           fi
-          echo "PASS: sensorLandscape orientation confirmed"
 
           echo "=== Step J: 16 KB Page-Size Alignment Check ==="
           unzip -q -o "$APK_PATH" "lib/arm64-v8a/libgeminimine.so" -d /tmp/apk_extracted
