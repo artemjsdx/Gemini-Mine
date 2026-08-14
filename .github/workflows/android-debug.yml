@@ -165,6 +165,22 @@ jobs:
           fi
           echo "PASS: zipalign 16 KB page alignment verification successful"
 
+
+          echo "=== Step L: GameActivity JNI Symbol Regression Guard ==="
+          export NM="${ANDROID_SDK_ROOT}/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          python3 - << 'PYEOF'
+          import os, subprocess, sys
+          nm = os.environ.get("NM", "llvm-nm")
+          so_path = "/tmp/ci_extracted_libs/lib/arm64-v8a/libgeminimine.so"
+          out = subprocess.check_output([nm, "-D", so_path]).decode("utf-8")
+          required_symbol = "Java_com_google_androidgamesdk_GameActivity_initializeNativeCode"
+          if required_symbol in out:
+              print(f"PASS: Required JNI entry point '{required_symbol}' is exported in libgeminimine.so")
+          else:
+              print(f"ERROR: Missing required JNI entry point '{required_symbol}' in {so_path}")
+              sys.exit(1)
+          PYEOF
+
           echo "=== All CI validations passed successfully! ==="
 
       - name: Upload Debug APK Artifact
