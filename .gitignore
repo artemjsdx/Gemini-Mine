@@ -10,3 +10,7 @@ captures/
 .cxx/
 *.apk
 *.aab
+
+*.jks
+*.keystore
+!signing/geminimine-development.jks

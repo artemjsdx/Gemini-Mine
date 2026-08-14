@@ -121,7 +121,6 @@ jobs:
           if not so_files:
               print("ERROR: No .so files found in arm64-v8a directory")
               sys.exit(1)
-
           failed = False
           for so in sorted(so_files):
               full_path = os.path.join(lib_dir, so)
@@ -149,7 +148,6 @@ jobs:
                       failed = True
               if not failed:
                   print(f"  PASS: {so} is strictly 16 KB aligned (>= 0x4000)")
-
           if failed:
               print("ERROR: One or more shared libraries failed 16 KB ELF alignment verification")
               sys.exit(1)
@@ -164,7 +162,6 @@ jobs:
             exit 1
           fi
           echo "PASS: zipalign 16 KB page alignment verification successful"
-
 
           echo "=== Step L: GameActivity JNI Symbol Regression Guard ==="
           export NM="${ANDROID_SDK_ROOT}/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
@@ -181,11 +178,59 @@ jobs:
               sys.exit(1)
           PYEOF
 
+          echo "=== Step M: Development Signer Regression Guard ==="
+          export APKSIGNER="${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner"
+          EXPECTED_CERT_FILE="signing/development-cert-sha256.txt"
+          if [ ! -f "$EXPECTED_CERT_FILE" ]; then
+            echo "ERROR: Expected certificate fingerprint file not found at $EXPECTED_CERT_FILE"
+            exit 1
+          fi
+          EXPECTED_CERT_SHA=$(cat "$EXPECTED_CERT_FILE" | tr -d ' 
+' | tr '[:upper:]' '[:lower:]')
+          echo "Expected Signer Cert SHA-256: $EXPECTED_CERT_SHA"
+          
+          CERT_DUMP=$($APKSIGNER verify --verbose --print-certs "$APK_PATH")
+          echo "$CERT_DUMP"
+          
+          if ! $APKSIGNER verify "$APK_PATH"; then
+            echo "ERROR: apksigner verification failed for $APK_PATH"
+            exit 1
+          fi
+          echo "PASS: APK signature verification passed"
+          
+          python3 - << 'PYEOF'
+          import subprocess, sys, re, os
+
+          apksigner = os.environ.get("APKSIGNER", "apksigner")
+          apk_path = "app/build/outputs/apk/debug/app-debug.apk"
+          expected_path = "signing/development-cert-sha256.txt"
+
+          with open(expected_path, "r") as f:
+              expected_sha = f.read().strip().lower().replace(":", "")
+
+          out = subprocess.check_output([apksigner, "verify", "--print-certs", apk_path]).decode("utf-8")
+          match = re.search(r"Signer\s*#1\s*certificate\s*SHA-256\s*digest:\s*([0-9a-fA-F]+)", out)
+          if not match:
+              print("ERROR: Failed to extract Signer #1 certificate SHA-256 digest from apksigner output")
+              print(out)
+              sys.exit(1)
+
+          actual_sha = match.group(1).strip().lower()
+          print(f"Actual Signer Certificate SHA-256:   {actual_sha}")
+          print(f"Expected Signer Certificate SHA-256: {expected_sha}")
+
+          if actual_sha != expected_sha:
+              print(f"ERROR: Signer certificate mismatch! Actual: {actual_sha}, Expected: {expected_sha}")
+              sys.exit(1)
+
+          print("PASS: Signer certificate matches authoritative development certificate SHA-256")
+          PYEOF
+
           echo "=== All CI validations passed successfully! ==="
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: GeminiMine-GM001-debug
+          name: GeminiMine-GM002-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

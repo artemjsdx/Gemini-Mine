@@ -10,8 +10,8 @@ android {
         applicationId = "com.artemjsdx.geminimine"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.0.1-foundation"
+        versionCode = 2
+        versionName = "0.0.2-foundation-signing"
 
         ndk {
             abiFilters.add("arm64-v8a")
@@ -22,6 +22,33 @@ android {
                 cppFlags("-std=c++20")
                 arguments("-DANDROID_STL=c++_shared")
             }
+        }
+    }
+
+    val devSigningPropsFile = rootProject.file("signing/development-signing.properties")
+    val devSigningProps = java.util.Properties()
+    if (devSigningPropsFile.exists()) {
+        devSigningPropsFile.inputStream().use { devSigningProps.load(it) }
+    }
+
+    signingConfigs {
+        create("development") {
+            if (!devSigningPropsFile.exists()) {
+                throw GradleException("Development signing properties file not found: " + devSigningPropsFile.absolutePath)
+            }
+            val storeFilePath = devSigningProps.getProperty("storeFile")
+                ?: throw GradleException("Missing storeFile in " + devSigningPropsFile.absolutePath)
+            val keystoreFile = rootProject.file(storeFilePath)
+            if (!keystoreFile.exists()) {
+                throw GradleException("Development keystore file not found: " + keystoreFile.absolutePath)
+            }
+            storeFile = keystoreFile
+            storePassword = devSigningProps.getProperty("storePassword")
+                ?: throw GradleException("Missing storePassword in " + devSigningPropsFile.absolutePath)
+            keyAlias = devSigningProps.getProperty("keyAlias")
+                ?: throw GradleException("Missing keyAlias in " + devSigningPropsFile.absolutePath)
+            keyPassword = devSigningProps.getProperty("keyPassword")
+                ?: throw GradleException("Missing keyPassword in " + devSigningPropsFile.absolutePath)
         }
     }
 
@@ -46,6 +73,7 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("development")
         }
         release {
             isMinifyEnabled = false
