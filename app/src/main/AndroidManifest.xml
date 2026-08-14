@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
+        android:name=".GeminiMineApplication"
         android:allowBackup="false"
         android:appCategory="game"
         android:hasCode="true"
@@ -9,19 +12,30 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.GeminiMine">
 
+        <!-- Forensic Launcher running in isolated :forensics process -->
         <activity
-            android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:name=".forensics.ForensicLauncherActivity"
+            android:process=":forensics"
             android:exported="true"
-            android:screenOrientation="sensorLandscape">
-            <meta-data
-                android:name="android.app.lib_name"
-                android:value="geminimine" />
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@style/Theme.GeminiMine">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Real Gemini Mine GameActivity in default game process -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:screenOrientation="sensorLandscape">
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="geminimine" />
+        </activity>
+
     </application>
 
 </manifest>

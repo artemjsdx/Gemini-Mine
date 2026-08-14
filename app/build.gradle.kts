@@ -10,8 +10,8 @@ android {
         applicationId = "com.artemjsdx.geminimine"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.0.1-foundation"
+        versionCode = 3
+        versionName = "0.0.1-foundation-r3a2-forensics"
 
         ndk {
             abiFilters.add("arm64-v8a")
