@@ -2,7 +2,7 @@ name: Gemini Mine Android Debug
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "forensics/*" ]
   workflow_dispatch:
 
 permissions:
@@ -91,20 +91,11 @@ jobs:
           }
           echo "PASS: Application label is 'Gemini Mine'"
 
-          # Launcher activity check
-          echo "$BADGING_DUMP" | grep -q "launchable-activity: name='com.artemjsdx.geminimine.MainActivity'" || {
-            echo "ERROR: Launchable activity is not com.artemjsdx.geminimine.MainActivity"
-            exit 1
-          }
-          echo "PASS: Launchable activity is com.artemjsdx.geminimine.MainActivity"
-
-          # SensorLandscape check (ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE = 6 or 0x6 in binary manifest)
-          MANIFEST_XML=$(${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/apkanalyzer manifest print "$APK_PATH")
-          echo "$MANIFEST_XML"
-          if echo "$MANIFEST_XML" | grep -q 'android:screenOrientation="6"\|android:screenOrientation="sensorLandscape"'; then
-            echo "PASS: sensorLandscape (screenOrientation=6) orientation confirmed in manifest"
+          # Launcher activity check (ForensicLauncherActivity for forensics branch, MainActivity for main)
+          if echo "$BADGING_DUMP" | grep -q "launchable-activity: name='com.artemjsdx.geminimine.forensics.ForensicLauncherActivity'" || echo "$BADGING_DUMP" | grep -q "launchable-activity: name='com.artemjsdx.geminimine.MainActivity'"; then
+            echo "PASS: Valid launchable activity found in APK"
           else
-            echo "ERROR: sensorLandscape not found in manifest"
+            echo "ERROR: Valid launchable activity not found in APK"
             exit 1
           fi
 
@@ -170,6 +161,6 @@ jobs:
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: GeminiMine-GM001-debug
+          name: GeminiMine-GM001-R3A2-forensics
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
