@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
 }
@@ -26,9 +29,9 @@ android {
     }
 
     val devSigningPropsFile = rootProject.file("signing/development-signing.properties")
-    val devSigningProps = java.util.Properties()
+    val devSigningProps = Properties()
     if (devSigningPropsFile.exists()) {
-        devSigningPropsFile.inputStream().use { devSigningProps.load(it) }
+        FileInputStream(devSigningPropsFile).use { s -> devSigningProps.load(s) }
     }
 
     signingConfigs {
